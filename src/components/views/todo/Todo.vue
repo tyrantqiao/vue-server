@@ -1,185 +1,147 @@
 <template>
-import func from './vue-temp/vue-editor-bridge';
-import Vue from 'vue';
-  <section class="section">
-    <header class="header">
-      <h1>todo lists,input things you want to do</h1>
-      <input class="input-todo" type="text" name="todoInput" id="todoInput"
-        placeholder="Input task..." v-model="newTodo" @keyup.enter="addTodo"/>
-    </header>
-    <!-- v-show根据值决定css v-cloak编译结束后再展示 -->
-    <section class="main" v-show="todos.length" v-cloak>
-      <input type="checkBox" class="allToggle" v-model="allTodos">
-      <ul class="todo-list">
-        <li v-for="todo in todos"
-        class="todo"
-        :key="todo.id"
-        :class="{ completed: todo.completed, editing: todo == editedTodo }">
-          <div class="view">
-            <input type="checkbox" v-model="todo.completed" class="toggle">
-            <label @dblclick="editTodo(todo)">{{todo.title}}</label>
-            <button class="destory" @click="removeTodo(todo)"></button>
-          </div>
-          <input type="text"
-          class="edit"
-          v-model="todo.title"
-          v-todo-focus="todo==editedTodo"
-          @blur="editDone(todo)"
-          @keydown.enter="editDone(todo)"
-          @keydown.esc="editCancel(todo)"
-          >
-        </li>
-      </ul>
-    </section>
-    <footer class="footer" v-show="todos.length" v-cloak>
-      <span class="todo-size">
-        <!-- | pluralize vue的过滤器用来给结果变为复数显示 -->
-        <strong>{{remaining}}</strong> {{remaining|pluralize}} left
-      </span>
-      <ul class="filters">
-        <li><a href="#/all" :class="{selected: visibility=='all'}">所有</a></li>
-        <li><a href="#/done" :class="{selected: visibility=='done'}">已完成</a></li>
-        <li><a href="#/active" :class="{selected: visibility=='active'}">活跃</a></li>        
-      </ul>
-      <button class="clear-done" @click="clearDoneTodos" v-show="todos.length > remaining">
-        清除完成任务······Done
-      </button>
-    </footer>
-  </section>
+  <div class="page lists-show" v-show="!todo.isDelete">
+    <!-- 头部模块 -->
+    <nav>
+      <!-- 当用户浏览车窗口尺寸小于40em时候，显示手机端的菜单图标 -->
+      <div class="form list-edit-form" v-show="isUpdate">
+        <!-- 当用户点击标题进入修改状态，就显示当前内容可以修改 -->
+        <input type="text" v-model="todo.title" @keyup.enter="updateTitle" :disabled="todo.locked">
+        <div class="nav-group right">
+          <a class="nav-item" @click="isUpdate = false">
+            <span class="icon-close"></span>
+          </a>
+        </div>
+      </div>
+      <div class="nav-group" @click="$store.dispatch('updateMenu')" v-show="!isUpdate">
+        <!-- 在菜单的图标下面添加updateMenu时间，他可以直接调用vuex actions.js里面的updateMenu方法 -->
+        <a class="nav-item">
+          <span class="icon-list-unordered"></span>
+        </a>
+      </div>
+      <!-- 显示标题和数字模块 -->
+      <h1 class="title-page" v-show="!isUpdate" @click="isUpdate = true">
+        <span class="title-wrapper">{{todo.title}}</span>
+        <!-- title:标题 绑定标题 -->
+        <span class="count-list">{{todo.count || 0}}</span>
+        <!-- count:数量 绑定代办单项熟练-->
+      </h1>
+      <!-- 右边显示删除图标和锁定图标的模块 -->
+      <div class="nav-group right" v-show="!isUpdate">
+        <div class="options-web">
+          <a class="nav-item" @click="onlock">
+            <!-- cicon-lock锁定的图标
+                                                    icon-unlock：非锁定的图标
+            -->
+            <span class="icon-lock" v-if="todo.locked"></span>
+            <span class="icon-unlock" v-else></span>
+          </a>
+          <a class="nav-item">
+            <span class="icon-trash" @click="onDelete"></span>
+          </a>
+        </div>
+      </div>
+      <!-- 用户新增代办事项的input模块 -->
+      <div class="form todo-new input-symbol">
+        <!-- 绑定disabled值，当todo.locked为绑定的时候，禁止input输入,双向绑定text,和监听input的回车事件@keyup.enter -->
+        <input
+          type="text"
+          v-model="text"
+          placeholder="请输入"
+          @keyup.enter="onAdd"
+          :disabled="todo.locked"
+        >
+        <span class="icon-add"></span>
+      </div>
+    </nav>
+    <!-- 列表主体模块 -->
+    <div class="content-scrollable list-items">
+      <div v-for="(item,index) in items" :key="index">
+        <item :item="item" :index="index" :id="todo.id" :init="init" :locked="todo.locked"></item>
+      </div>
+    </div>
+  </div>
 </template>
 <script>
-var STORAGE_KEY = "todos-vuejs-2.0";
-var todoStorage = {
-  fetch: function() {
-    var todos = JSON.parse(localStorage.getItem(STORAGE_KEY || "[]"));
-    todos.array.forEach(element => {
-      element.id = index;
-    });
-    todoStorage.uid = todos.length;
-    return todos;
-  },
-  save: function(todos) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
-  }
-};
-
-// filters visibility all | done | active
-var filters = {
-  all: function(todos) {
-    return todos;
-  },
-  // 需要对完成的todo进行一次筛选，用done标签来筛选
-  done: function(todos) {
-    return todos.filter(function(todo) {
-      return todos.done;
-    });
-  },
-  active: function(todos) {
-    return todos.filter(function(todo) {
-      return !todos.done;
-    });
-  }
-};
-
-var vue = new Vue({
-  data: {
-    todos: todoStorage.fetch(),
-    newTodo: '',
-    editedTodo: null,
-    visibility: 'all'
-  },
-  watch: {
-    todos: {
-      // handler使得上来就会对对象进行处理，不然的话得等第一次变化后才会发生改变
-      handler: function(todos){
-        this.todoStorage.save(todos)
-      },
-      // 对obj的属性进行深度监听
-      deep: true
-    }
-  },
-  computed: {
-    filteredTodos: function(){
-      return filters[this.visibility](this.todos)
-    },
-    remaining: function(){
-      return this.todos.length
-    },
-    allDone: {
-      get: function(){
-        return this.remaining==0
-      },
-      set: function(value){
-        this.todos.forEach(function(todo){
-          todo.completed=value
-        })
-      }
-    }
-  },
-  filters: {
-    // 使结果呈现单复数的形式，通过n来判断
-    pluralize: function(n){
-      return n==1?'item':'items'
-    }
-  },
-  methdos: {
-    addTodo: function(){
-      var value=this.newTodo && this.newTodo.trim()
-      // 空处理
-      if(!value){
-        return
-      }
-      this.todos.push({
-        id: todoStorage.uid++,
-        title: value,
-        completed: false
-      })
-      this.newTodo=''
-    },
-    //TODO 早起继续还有好多个方法
-    removeTodo: function(){
-
-    }
-  }
-});
-
+import item from "./item";
+import { addRecord, getTodo, editTodo } from "@/api/api";
 export default {
-  name: "Todo",
   data() {
     return {
-      todoItems: [
-        {
-          task: "把todoList完成"
-        },
-        {
-          task: "把登录完成"
-        }
-      ]
+      todo: {
+        title: "星期一", // 标题
+        count: 12, // 数量
+        locked: false // 是否绑定
+      },
+      items: [
+        // 代办单项列表
+      ],
+      text: "", // 用户输入单项项绑定的输入
+      isUpdate: false // 新增修改状态
     };
+  },
+  components: {
+    item
+  },
+  watch: {
+    "$route.params.id"() {
+      // 监听$route.params.id的变化，如果这个id即代表用户点击了其他的待办项需要重新请求数据。
+      this.init();
+    }
+  },
+  created() {
+    // created生命周期，在实例已经创建完成，页面还没渲染时调用init方法。
+    this.init();
+  },
+  methods: {
+    init() {
+      const ID = this.$route.params.id;
+      getTodo({ id: ID }).then(res => {
+        let { id, title, count, isDelete, locked, record } = res.data.todo;
+        this.items = record;
+        this.todo = {
+          id: id,
+          title: title,
+          count: count,
+          locked: locked,
+          isDelete: isDelete
+        };
+      });
+    },
+    onAdd() {
+      const ID = this.$route.params.id;
+      addRecord({ id: ID, text: this.text }).then(res => {
+        this.text = "";
+        this.init();
+        this.$store.dispatch("getTodo");
+      });
+    },
+    updateTodo() {
+      let _this = this;
+      editTodo({
+        todo: this.todo
+      }).then(data => {
+        // _this.init();
+        _this.$store.dispatch("getTodo");
+      });
+    },
+    updateTitle() {
+      this.updateTodo();
+      this.isUpdate = false;
+    },
+    onDelete() {
+      this.todo.isDelete = true;
+      this.updateTodo();
+    },
+    onlock() {
+      this.todo.locked = !this.todo.locked;
+      this.updateTodo();
+    }
   }
 };
 </script>
-<style>
-.text-center {
-  text-align: center;
-}
 
-.spacing {
-  margin-top: 30px;
-}
-
-.red {
-  color: darkred;
-}
-
-li {
-  text-align: left;
-  font-size: 40px;
-  list-style: none;
-  margin: 0;
-}
-
-li:hover {
-  text-decoration: line-through;
-}
+<style lang = "less">
+@import "~@/common/style/nav.less";
+@import "~@/common/style/form.less";
+@import "~@/common/style/todo.less";
 </style>

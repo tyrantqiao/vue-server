@@ -1,35 +1,21 @@
 import Vue from 'vue'
 import Router from 'vue-router'
-import HelloWorld from '@/components/HelloWorld'
-import Todo from '@/components/views/todo/Todo'
-import Login from '@/components/views/auth/Login'
+import todo from '@/components/views/todo/todo'
+import layouts from '@/components/views/layouts'
 
 Vue.use(Router)
 
 export default new Router({
-  mode: 'history',
+  // mode: 'history',
   routes: [{
-      path: '/login',
-      name: 'Login',
-      component: Login
-    }, {
-      path: '/',
-      name: 'HelloWorld',
-      component: HelloWorld
-    },
-    {
-      path: '/home',
-      name: 'HelloWorld',
-      component: HelloWorld
-    },
-    {
-      path: '/todo',
-      name: 'Make your own TodoList',
-      component: Todo
-    },
-    {
-      path: '/*',
-      redirect: '/'
-    }
-  ]
+    path: '/',
+    name: 'home',
+    component: layouts,
+    // 设置嵌套路由，以todo的id来进行切换界面
+    children: [{
+      path: '/todo/:id',
+      name: 'todo',
+      component: todo
+    }]
+  }]
 })
